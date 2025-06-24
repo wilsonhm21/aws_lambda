@@ -58,8 +58,6 @@ resource "aws_lambda_function" "csv_processor" {
   role          = aws_iam_role.lambda_exec_role.arn
   filename      = "lambda.zip"
 
-  # ✅ Recomendación 1: Detectar cambios al código
-  source_code_hash = filebase64sha256("lambda.zip")
 
   environment {
     variables = {
