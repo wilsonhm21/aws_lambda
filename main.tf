@@ -24,7 +24,7 @@ resource "aws_iam_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-# 🚀 Recomendación 3: Política de acceso a S3 para Lambda
+# Recomendación 3: Política de acceso a S3 para Lambda
 resource "aws_iam_policy" "lambda_s3_access" {
   name   = "lambda_s3_access"
   policy = jsonencode({
