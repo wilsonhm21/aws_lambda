@@ -16,7 +16,8 @@ jobs:
       run: sudo apt-get install zip -y
 
     - name: Zip Lambda code
-      run: zip -r aws_lambda/lambda.zip lambda/
+      run: zip -r lambda.zip lambda/
+
 
 
 
