@@ -26,7 +26,7 @@ resource "aws_iam_policy_attachment" "lambda_basic" {
 
 # Recomendación 3: Política de acceso a S3 para Lambda
 resource "aws_iam_policy" "lambda_s3_access" {
-  name   = "lambda_s3_access"
+  name   = "lambda_s3_access_v2"
   policy = jsonencode({
     Version = "2012-10-17",
     Statement = [

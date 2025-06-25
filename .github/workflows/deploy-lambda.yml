@@ -16,7 +16,8 @@ jobs:
       run: sudo apt-get install zip -y
 
     - name: Zip Lambda code
-      run: cd lambda && zip -r ../lambda.zip .
+      run: zip -r lambda.zip lambda/
+
 
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v2

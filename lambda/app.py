@@ -175,15 +175,27 @@ def lambda_handler(event, context):
     # Insertar en RDS
     conn = pymysql.connect(host=rds_host, user=rds_user, password=rds_pass, db=rds_db)
     with conn.cursor() as cur:
+        campos_insertar = [
+            "CODIGO", "CODIGO OEM", "MARCA AUTOMOVIL", "MODELO",
+            "DESCRIPCION", "STOCK", "DIAMETRO", "MEDIDA", "AÑO", "MOTOR"
+        ]
+        
+        sql = f"""
+            INSERT INTO reportes ({', '.join(campos_insertar)})
+            VALUES ({', '.join(['%s'] * len(campos_insertar))})
+        """
+
         for row in cleaned_data:
             try:
-                cur.execute("""
-                    INSERT INTO reportes (email, nombre) 
-                    VALUES (%s, %s)
-                """, (row['email'], row['nombre']))
-            except:
+                valores = [row.get(campo, '') for campo in campos_insertar]
+                cur.execute(sql, valores)
+            except Exception as e:
+                print(f"❌ Error al insertar fila: {e}")
                 continue
+
         conn.commit()
     conn.close()
 
-    return {"statusCode": 200, "body": f"Procesado {len(cleaned_data)} registros válidos"}
+    return {
+        "statusCode": 200,
+        "body": f"✅ Procesado {len(cleaned_data)} registros válidos"}
