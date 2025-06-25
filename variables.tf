@@ -1,6 +1,9 @@
 variable "aws_region" {
   default = "us-east-1"
 }
+variable "lambda_zip_path" {
+  description = "Ruta local del archivo ZIP de Lambda"
+}
 
 variable "lambda_name" {
   default = "csv-lambda-processor"
