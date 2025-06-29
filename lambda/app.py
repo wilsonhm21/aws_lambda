@@ -163,7 +163,7 @@ def lambda_handler(event, context):
             key_seen.add(combo_key)
             cleaned_data.append(row)
 
-    # Guardar como JSON en bucket de salida
+    # Guardar como JSON en bucket de salidaa
     output_bucket = os.environ['OUTPUT_BUCKET']
     output_key = key.replace('.csv', '.json')
     s3.put_object(
