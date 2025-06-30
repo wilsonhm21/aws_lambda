@@ -134,6 +134,9 @@ def lambda_handler(event, context):
 
     response = s3.get_object(Bucket=bucket, Key=key)
     lines = response['Body'].read().decode('utf-8').splitlines()
+
+        # 👇 Regla agregada para ignorar filas vacías
+    lines = [line for line in lines if line.strip() != '']
     reader = csv.DictReader(lines)
 
     header = reader.fieldnames
