@@ -7,131 +7,129 @@ from datetime import datetime
 
 s3 = boto3.client('s3')
 
-# Lista de valores inválidos conocidos
-placeholders = {'n/a', '-', 'null', 'sin dato', 'none', ''}
+# Configuración de validación
+PLACEHOLDERS = {'n/a', '-', 'null', 'sin dato', 'none', '', 'na'}
+REQUIRED_FIELDS = ["codigo", "nombre", "descripcion", "marca", "stock", "precio"]
+MARCAS_VALIDAS = {'NGK', 'Denso', 'Delphi', 'ACDelco', 'Bosch', 'Valeo', 'Magneti Marelli', 'Hella'}
 
-# Año actual
-current_year = datetime.now().year
+def validar_codigo(codigo):
+    """Valida el formato del código COD-XXXXXX"""
+    return bool(re.fullmatch(r'^COD-[a-zA-Z0-9]{6,8}$', codigo.strip()))
 
-required_fields = ["CODIGO", "CODIGO OEM", "MARCA AUTOMOVIL", "MODELO", "DESCRIPCION", "STOCK"]
+def validar_marca(marca):
+    """Valida que la marca esté en la lista de marcas válidas"""
+    return marca.strip() in MARCAS_VALIDAS
 
-def is_valid_row(row, header):
-    if len(row) != len(header):
-        return False
-
-    if not row.get("MARCA AUTOMOVIL", "").isalpha():
-        return False
-
-    if any(',' in str(v) and str(v).count(',') > 1 for v in row.values()):
-        return False
-
-    for field in required_fields:
-        if row.get(field,"").strip().lower() in placeholders:
-            return False
-
-    empty_count = sum(1 for v in row.values() if str(v).strip().lower() in placeholders)
-    if empty_count / len(row) > 0.3:
-        return False
-
-    if any(str(v).strip().lower() in placeholders for v in row.values()):
-        return False
-
+def validar_stock(stock):
+    """Valida que el stock sea un entero positivo"""
     try:
-        stock = int(row.get("STOCK",-1))
-        if stock < 0 or stock > 10000:
-            return False
-    except:
+        return 0 <= int(stock) <= 1000
+    except (ValueError, TypeError):
         return False
 
-    diametro = row.get("DIAMETRO","")
-    if not re.match(r"^\d{2,3}mm$", diametro):
-        return False
+def validar_precio(precio):
+    """Valida que el precio sea un decimal positivo"""
     try:
-        diametro_val = int(diametro.replace("mm",""))
-        if not 30 <= diametro_val <= 120:
-            return False
-    except:
+        return 0 < float(precio) <= 10000
+    except (ValueError, TypeError):
         return False
 
-    medida = row.get("MEDIDA","")
-    if not re.match(r"^\d+(\.\d+)?\*\d+(\.\d+)?\*\d+(\.\d+)?$", medida):
+def validar_descripcion(descripcion):
+    """Valida la estructura de la descripción"""
+    desc = descripcion.strip()
+    return (len(desc) >= 5 and 
+            len(desc.split()) >= 2 and 
+            not desc.startswith(('Participant', 'House', 'Approach')))
+
+def es_valido(row):
+    """Aplica todas las validaciones a un registro"""
+    # Validación de campos requeridos
+    if any(field not in row or str(row[field]).strip().lower() in PLACEHOLDERS 
+           for field in REQUIRED_FIELDS):
         return False
+    
+    # Validaciones específicas por campo
+    validations = [
+        validar_codigo(row['codigo']),
+        validar_marca(row['marca']),
+        validar_stock(row['stock']),
+        validar_precio(row['precio']),
+        validar_descripcion(row['descripcion'])
+    ]
+    
+    return all(validations)
+
+def limpiar_datos(row):
+    """Normaliza y limpia los datos del registro"""
+    cleaned = {k.lower().strip(): str(v).strip() 
+              for k, v in row.items() if str(v).strip()}
+    
+    # Conversión de tipos
     try:
-        partes = [float(x) for x in medida.split("*")]
-        if any(p<=0.1 or p>50 for p in partes):
-            return False
-    except:
-        return False
-
-    anio = row.get("AÑO")
-    if anio:
-        try:
-            anio_int = int(anio)
-            if anio_int < 1950 or anio_int > current_year:
-                return False
-        except:
-            return False
-
-    descripcion = row.get("DESCRIPCION","").strip()
-    if len(descripcion) < 5 or len(descripcion.split()) < 2:
-        return False
-
-    if any(re.search(r"[@#?%&]", str(v)) for v in row.values()):
-        return False
-
-    if row.get("MARCA AUTOMOVIL","").isdigit():
-        return False
-
-    for k,v in row.items():
-        if v.islower() or v.isupper():
-            continue
-        elif not re.match(r'^[A-Z][a-z]',v):
-            return False
-
-    if any(re.match(r"^\d+$", str(row.get(f,""))) and f in ["MARCA AUTOMOVIL","DESCRIPCION"] for f in row):
-        return False
-
-    return True
+        cleaned['stock'] = int(cleaned['stock'])
+        cleaned['precio'] = float(cleaned['precio'])
+    except (ValueError, TypeError):
+        pass
+        
+    return cleaned
 
 def lambda_handler(event, context):
+    # Configuración S3
     bucket = event['Records'][0]['s3']['bucket']['name']
-    key    = event['Records'][0]['s3']['object']['key']
-
-    response = s3.get_object(Bucket=bucket, Key=key)
-    lines = response['Body'].read().decode('utf-8').splitlines()
-    lines = [line for line in lines if line.strip() != '']
-
-    reader = csv.DictReader(lines)
-    header = reader.fieldnames
-    raw_data = list(reader)
-
-    # deduplicado exacto
-    seen_rows = set()
-    unique_data = []
-    for row in raw_data:
-        row_tuple = tuple(row.items())
-        if row_tuple not in seen_rows:
-            seen_rows.add(row_tuple)
-            unique_data.append(row)
-
-    # deduplicado clave
-    key_seen = set()
-    cleaned_data = []
-    for row in unique_data:
-        combo = (row.get("CODIGO"),row.get("CODIGO OEM"),row.get("MOTOR"),row.get("MEDIDA"),row.get("STOCK"))
-        if combo not in key_seen and is_valid_row(row, header):
-            key_seen.add(combo)
-            cleaned_data.append(row)
-
-    output_bucket = os.environ['OUTPUT_BUCKET']
-    output_key = key.replace(".csv",".json")
-    s3.put_object(
-        Bucket=output_bucket,
-        Key=output_key,
-        Body=json.dumps(cleaned_data, ensure_ascii=False)
-    )
-
-    return {
-        "statusCode":200,
-        "body": f"✅ JSON limpio guardado en {output_bucket}/{output_key} con {len(cleaned_data)} registros"
-    }
+    key = event['Records'][0]['s3']['object']['key']
+    
+    try:
+        # Leer archivo CSV
+        response = s3.get_object(Bucket=bucket, Key=key)
+        lines = response['Body'].read().decode('utf-8').splitlines()
+        
+        # Procesar CSV
+        reader = csv.DictReader(lines)
+        raw_data = [limpiar_datos(row) for row in reader if any(field.strip() for field in row.values())]
+        
+        # Deduplicación
+        unique_data = []
+        seen_codes = set()
+        
+        for row in raw_data:
+            if row['codigo'] not in seen_codes and es_valido(row):
+                seen_codes.add(row['codigo'])
+                unique_data.append(row)
+        
+        # Generar salida
+        output_bucket = os.environ['OUTPUT_BUCKET']
+        output_key = f"validated_{os.path.basename(key)}.json"
+        
+        s3.put_object(
+            Bucket=output_bucket,
+            Key=output_key,
+            Body=json.dumps(unique_data, ensure_ascii=False, indent=2),
+            ContentType='application/json'
+        )
+        
+        # Estadísticas
+        stats = {
+            'archivo_origen': key,
+            'registros_leidos': len(raw_data),
+            'registros_validos': len(unique_data),
+            'registros_invalidos': len(raw_data) - len(unique_data),
+            'fecha_procesamiento': datetime.now().isoformat()
+        }
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': 'Procesamiento completado exitosamente',
+                'estadisticas': stats,
+                'ubicacion_resultados': f"s3://{output_bucket}/{output_key}"
+            })
+        }
+        
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': str(e),
+                'message': 'Error en el procesamiento del archivo'
+            })
+        }
